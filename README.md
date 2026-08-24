@@ -1,69 +1,94 @@
-# 🔒 Chat Seguro Multiusuario (Python + SSL/TLS)
+# Secure Multi-Client Chat (Python + SSL/TLS Socket Layer)
 
-Una aplicación de chat cliente-servidor implementada en Python que utiliza **Sockets** para la comunicación y **SSL/TLS, RSA, AES-256** para cifrar los mensajes, garantizando la privacidad de la conversación. Incluye una interfaz gráfica (GUI) construida con **Tkinter**.
+A multi-threaded client-server chat application implemented in Python utilizing low-level network **Sockets** wrapped within an **SSL/TLS cryptographic layer**. The project provides encrypted data transit over the network, active session management, and a graphical user interface (GUI) built with **Tkinter**.
 
 ![Demo del Chat](captura_chat.jpeg)
 
-## Características
+## Key Features
 
-* **Comunicación Encriptada:** Todo el tráfico entre el cliente y el servidor está protegido mediante SSL (Secure Sockets Layer).
-* **Arquitectura Cliente-Servidor:** Soporte para múltiples clientes conectados simultáneamente gracias al uso de `threading`.
-* **Interfaz Gráfica:** Cliente amigable construido con Tkinter.
-* **Comandos de Chat:** Funcionalidades como listar usuarios conectados.
-* **Notificaciones:** Avisos de conexión y desconexión de usuarios en tiempo real.
+- **Transport Layer Security (TLS/SSL):** Full symmetric and asymmetric cryptographic wrapping prevents eavesdropping, packet tampering, and man-in-the-middle (MitM) attacks.
+- **Concurrent Client Architecture:** Utilizes non-blocking daemon threads (`threading`) to handle simultaneous bidirectional message broadcasting.
+- **Graphical User Interface:** Lightweight desktop client featuring auto-scrolling chat history, input handling, and active session controls.
+- **Dynamic Control Commands:** Real-time client enumeration (`!users`) and network broadcast notifications on connection state changes.
 
-## Requisitos Previa
+---
 
-* **Python 3.10+** (Recomendado).
-* **OpenSSL** (Para generar los certificados de seguridad).
-* Librería `tkinter` (Generalmente incluida en Python, en Linux puede requerir `sudo apt-get install python3-tk`).
+## Cryptographic Handshake & Transport Flow
 
-## Instalación y Configuración
+The communication security model relies on hybrid cryptography established during the TLS socket wrapping phase:
 
-Sigue estos pasos para poner en marcha el proyecto en tu máquina local.
-
-### 1. Clonar el repositorio
-
-```bash
-git clone [https://github.com/TU-USUARIO/TU-REPOSITORIO.git](https://github.com/TU-USUARIO/TU-REPOSITORIO.git)
-cd TU-REPOSITORIO
+```text
+  Client                                                          Server
+    |                                                               |
+    | ----- (1) TCP 3-Way Handshake (SYN, SYN-ACK, ACK) ----------> |
+    |                                                               |
+    | ----- (2) ClientHello (Supported Cipher Suites & TLS) ------> |
+    | <---- (3) ServerHello + X.509 Certificate (Public Key RSA) -- |
+    |                                                               |
+    | [Client verifies cert & generates Master Secret]              |
+    | ----- (4) Key Exchange (Encrypted Premaster with RSA) ------> |
+    |                                                               |
+    | [Both derive symmetric session keys: AES-GCM / AES-CBC]       |
+    | <===========================================================> |
+    |         (5) Bi-directional Encrypted Traffic (AES)            |
 ```
-### 2. Generar Certificados SSL (Importante)
+Transport Initialization: Standard TCP stream establishment via AF_INET / SOCK_STREAM.
 
-Para que el servidor seguro funcione, necesitas generar un certificado autofirmado y una clave privada. Los archivos `.key` y `.pem` **no se incluyen en el repositorio por seguridad**.
+Asymmetric Key Exchange (RSA 2048-bit): The server presents its X.509 certificate. The client utilizes the server's public key to securely negotiate a shared secret.
 
-Ejecuta los siguientes comandos en tu terminal (dentro de la carpeta del proyecto):
+Symmetric Encryption (AES): All subsequent message payloads, commands, and broadcast streams are encrypted and decrypted in memory using symmetric session keys.
+
+## Prerequisites
+
+* Python 3.10+
+* OpenSSL CLI (for cryptographic key and X.509 certificate generation)
+* Tkinter (sudo apt-get install python3-tk on Debian/Ubuntu systems)
+
+
+## Instalation and Setup
+
+Follow these steps to get the project up and running on your local machine.
+
+### 1. Clone the Repository
 
 ```bash
-# 1. Generar la clave privada (pedirá una contraseña temporal)
+git clone https://github.com/JuanFc28/python-e2ee-secure-chat.git
+cd python-e2ee-secure-chat
+```
+### 2.Generate Local TLS Certificates
+
+Run the following OpenSSL commands to generate the self-signed certificate and private key.
+
+  Note: Private key files (.key) are sensitive and omitted from version control.
+
+```bash
+# 1. Generate RSA 2048-bit private key
 openssl genpkey -algorithm RSA -out server-key.key -aes256
 
-# 2. Generar la solicitud de firma de certificado (CSR)
+# 2. Generate Certificate Signing Request (CSR)
 openssl req -new -key server-key.key -out server.csr
 
-# 3. Generar el certificado autofirmado 
+# 3. Generate self-signed X.509 certificate valid for 365 days
 openssl x509 -req -days 365 -in server.csr -signkey server-key.key -out server-cert.pem
 
-# 4. Eliminar la contraseña de la clave privada (CRUCIAL para que el script de Python corra sin interrupciones)
+# 4. Remove passphrase from the private key for automated script loading
 openssl rsa -in server-key.key -out server-key.key
 ```
 
-## ▶️ Uso
+## Use
 
-### 1. Iniciar el Servidor
-Primero debes iniciar el servidor, que esperará las conexiones entrantes.
+### Start the Secure Server
 
 ```bash
 python3 server.py
 ```
-### 1. Iniciar el Cliente
-Abre una nueva terminal (o varias) para simular diferentes usuarios.
+### Launch Client Instances
+Open separate terminal sessions to simulate multiple participants:
 ```bash
 python3 client.py
 ```
 
-## Nota sobre Seguridad
+## Security & Architecture Notes
 
-Este proyecto utiliza certificados autofirmados.
-- Servidor: Está configurado para cargar el certificado local.
-- Cliente: Está configurado para CERT_NONE (no verificar la autoridad del certificado) para facilitar las pruebas en entornos locales (localhost). En un entorno de producción real, se debería utilizar un certificado emitido por una CA (Autoridad Certificadora) válida y activar la verificación en el cliente.
+- Certificate Authority (CA) Validation: The client configuration is set to ssl.CERT_NONE to facilitate local development with self-signed certificates. In production enterprise deployments, host verification should be enforced (ssl.CERT_REQUIRED) against a trusted Root CA.
+- Memory Safety: Message payloads are decrypted solely in the client runtime memory before being rendered into the GUI widget.
